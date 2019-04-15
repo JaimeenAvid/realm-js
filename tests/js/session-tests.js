@@ -798,36 +798,36 @@ module.exports = {
         });
     },
 
-    testCustomPartialSyncIdentifier() {
+    async testCustomPartialSyncIdentifier() {
         const username = uuid();
-        const credentials = Realm.Sync.Credentials.nickname(username);
-        return Realm.Sync.User.login('http://localhost:9080', credentials).then(user => {
-            const customRealm = new Realm({
-                schema: [ { name: 'Dog', properties: { name: 'string' } } ],
-                sync: {
-                    user: user,
-                    url: 'realm://localhost:9080/default',
-                    fullSynchronization: false,
-                    customQueryBasedSyncIdentifier: "foo/bar",
-                }
-            });
-            // Ensure that the custom partial sync identifier was picked up and appended to the url
-            TestCase.assertTrue(customRealm.path.endsWith(encodeURIComponent("default/__partial/foo/bar")));
-            customRealm.close();
-
-            const basicRealm = new Realm({
-                schema: [ { name: 'Dog', properties: { name: 'string' } } ],
-                sync: {
-                    user,
-                    url: 'realm://localhost:9080/default',
-                    fullSynchronization: false,
-                }
-            });
-
-            // Sanity check - when there's no custom identifier, it should not end in /foo/bar
-            TestCase.assertFalse(basicRealm.path.endsWith(encodeURIComponent("default/__partial/foo/bar")));
-            basicRealm.close();
+        const credentials = Realm.Sync.Credentials.nickname(username, true);
+        const user = await Realm.Sync.User.login('http://localhost:9080', credentials);
+        const customRealm = await Realm.open({
+            schema: [ { name: 'Dog', properties: { name: 'string' } } ],
+            sync: {
+                user: user,
+                url: 'realm://localhost:9080/default',
+                fullSynchronization: false,
+                customQueryBasedSyncIdentifier: "foo/bar",
+            }
         });
+
+        // Ensure that the custom partial sync identifier was picked up and appended to the url
+        TestCase.assertTrue(customRealm.path.endsWith(encodeURIComponent("default/__partial/foo/bar")));
+        customRealm.close();
+
+        const basicRealm = await Realm.open({
+            schema: [ { name: 'Dog', properties: { name: 'string' } } ],
+            sync: {
+                user,
+                url: 'realm://localhost:9080/default',
+                fullSynchronization: false,
+            }
+        });
+
+        // Sanity check - when there's no custom identifier, it should not end in /foo/bar
+        TestCase.assertFalse(basicRealm.path.endsWith(encodeURIComponent("default/__partial/foo/bar")));
+        basicRealm.close();
     },
 
     testSubscribeInFullRealm() {
@@ -1162,41 +1162,38 @@ module.exports = {
         });
     },
 
-    testResumePause() {
-        if(!isNodeProccess) {
-            return;
-        }
+    async testResumePause() {
+        const user = await Realm.Sync.User.register('http://localhost:9080', uuid(), 'password')
+        const config = {
+            sync: {
+                user: user,
+                url: 'realm://localhost:9080/~/testResumePause',
+                fullSynchronization: true,
+            }
+        };
 
-        return Realm.Sync.User.register('http://localhost:9080', uuid(), 'password')
-        .then((user) => {
-            const config = {
-                sync: {
-                    user: user,
-                    url: `realm://localhost:9080/~/${uuid()}`,
-                    fullSynchronization: true,
+        const realm = await Realm.open(config);
+        const session = realm.syncSession;
+
+        let started = false;
+        return new Promise((resolve, reject) => {
+            session.addConnectionNotification((newState, oldState) => {
+                if (newState === Realm.Sync.ConnectionState.Connected) {
+                    if (started) {
+                        resolve();
+                    }
+                    else {
+                        started = true;
+                        session.pause();
+                    }
                 }
-            };
-
-            return Realm.open(config);
-        }).then((realm) => {
-            return new Promise((resolve, reject) => {
-                const session = realm.syncSession;
-
-                const checks = {
-                    started: false,
-                    stopped: false,
-                    restarted: false
+                if (newState === Realm.Sync.ConnectionState.Disconnected) {
+                    session.resume();
                 }
+            });
 
-                session.addConnectionNotification((newState, oldState) => {
-                    if (newState === Realm.Sync.ConnectionState.Connected && checks.started === false) { checks.started = true; session.pause(); }
-                    if (newState === Realm.Sync.ConnectionState.Connected && checks.started === true) { checks.restarted = true; resolve(); }
-                    if (newState === Realm.Sync.ConnectionState.Disconnected) { checks.stopped = true; session.resume();}
-                });
-
-                setTimeout(() => { reject("Timeout") }, 10000);
-            })
-        })
+            setTimeout(() => { reject('Connection state notification timed out') }, 10000);
+        });
     },
 
     testMultipleResumes() {
