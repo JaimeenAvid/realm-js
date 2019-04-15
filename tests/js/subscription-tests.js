@@ -81,25 +81,14 @@ function getRealm() {
 module.exports = {
 
     testSubscriptionWrapperProperties() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
-            return new Promise((resolve, reject) => {
-                const subscription = realm.objects("ObjectA").subscribe("test");
-                TestCase.assertEqual(subscription.name, "test");
-                TestCase.assertEqual(subscription.state, Realm.Sync.SubscriptionState.Creating);
-                resolve();
-            });
+            const subscription = realm.objects("ObjectA").subscribe("test");
+            TestCase.assertEqual(subscription.name, "test");
+            TestCase.assertEqual(subscription.state, Realm.Sync.SubscriptionState.Creating);
         });
     },
 
     testNamedSubscriptionProperties() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
             return new Promise((resolve, reject) => {
                 const now = new Date();
@@ -125,10 +114,6 @@ module.exports = {
     },
 
     testUpdateQuery: function () {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
             return new Promise((resolve, reject) => {
                 const sub = realm.objects("ObjectA").filtered("name = 'Foo'").subscribe("update-named-sub-query");
@@ -143,7 +128,7 @@ module.exports = {
                             // Updating the query must either be a string or a Results objects
                             TestCase.assertThrows(() => namedSub.query = 0);
                             TestCase.assertThrows(() => namedSub.query = true);
-    
+
                             // Updating the query using a string
                             namedSub.query = "truepredicate";
                             TestCase.assertEqual(namedSub.query, "truepredicate");
@@ -151,7 +136,7 @@ module.exports = {
                             TestCase.assertEqual(namedSub.error, undefined);
                             TestCase.assertTrue(updated.getTime() < namedSub.updatedAt.getTime());
                             updated = namedSub.updatedAt;
-                            
+
                             setTimeout(function() {
                                 // Updating the query using a Results object
                                 namedSub.query = realm.objects('ObjectA').filtered('name = "Bar"');
@@ -167,10 +152,6 @@ module.exports = {
     },
 
     testUpdateTtl() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
             const sub = realm.objects("ObjectA").filtered("name = 'Foo'").subscribe("update-named-sub-query");
             return new Promise((resolve, reject) => {
@@ -196,10 +177,6 @@ module.exports = {
     },
 
     testUpdateReadOnlyProperties() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
             return new Promise((resolve, reject) => {
                 const sub = realm.objects("ObjectA").subscribe("read-only-test");
@@ -221,10 +198,6 @@ module.exports = {
     },
 
     testSubscribeWithTtl() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
             return new Promise((resolve, reject) => {
                 const now = new Date();
@@ -247,10 +220,6 @@ module.exports = {
     },
 
     testSubscribeAndUpdateQuery() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
             return new Promise((resolve, reject) => {
                 let query1 = realm.objects("ObjectA");
@@ -271,7 +240,7 @@ module.exports = {
                                     resolve();
                                 }
                             });
-                        }, 2);    
+                        }, 2);
                     }
                 });
             });
@@ -279,10 +248,6 @@ module.exports = {
     },
 
     testSubscribeAndUpdateTtl() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
             const query1 = realm.objects("ObjectA");
 
@@ -315,17 +280,9 @@ module.exports = {
     },
 
     testSubscribeWithInvalidOptions() {
-        if (!isNodeProccess) {
-            return;
-        }
-
         return getRealm().then(realm => {
-            return new Promise((resolve, reject) => {
-                let query = realm.objects("ObjectA");
-                TestCase.assertThrows(() => query.subscribe({ update: true, timeToLive: 1000})); // Missing name
-                resolve();
-            });
+            let query = realm.objects("ObjectA");
+            TestCase.assertThrows(() => query.subscribe({ update: true, timeToLive: 1000})); // Missing name
         });
     },
-
 };
