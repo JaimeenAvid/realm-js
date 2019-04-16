@@ -886,7 +886,7 @@ module.exports = {
                             TestCase.assertEqual(collection.length, 1);
                             TestCase.assertEqual(collection[0].name, dogName);
                             results.removeAllListeners();
-                            TestCase.assertEqual(subscription.name, subName);
+                            TestCase.assertEqual(subscription.name, subName, `Subscription name in results.addListener: ${subscription.name} ${subName}`);
                             resolve();
                         });
                     }
@@ -900,6 +900,7 @@ module.exports = {
         await waitForSubscription(results2, subscription2, 'foobar', 'Lassy 2');
 
         let listOfSubscriptions = realm.subscriptions();
+        console.log('subscriptions', listOfSubscriptions);
         TestCase.assertEqual(listOfSubscriptions.length, 2 + 5); // 2 = the two subscriptions, 5 = the permissions classes
         TestCase.assertEqual(listOfSubscriptions[0]['name'], '[Dog] name == "Lassy 1" '); // the query is the default name; notice the trailing whitespace!
         TestCase.assertEqual(listOfSubscriptions[0]['query'], 'name == "Lassy 1" '); // notice the trailing whitespace!

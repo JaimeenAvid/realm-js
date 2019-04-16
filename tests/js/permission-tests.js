@@ -146,7 +146,9 @@ module.exports = {
 
         let permission;
         for (let i = 0; !permission && i < 3; ++i) {
-            permission = await permissionForPath(await user2.getGrantedPermissions('any'), path);
+            const permissions = await user2.getGrantedPermissions('any');
+            console.log(permissions);
+            permission = await permissionForPath(permissions, path);
             if (!permission) {
                 await wait(100 * (i + 1));
             }

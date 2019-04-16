@@ -776,22 +776,32 @@ describe('Multi-process Notifier', () => {
     });
 
     async function expectNotifications(regex: string, fn) { //}: (() => Promise<object>) => Promise<void>) {
+        console.log('expectNotifications', regex);
         await Realm.Sync.addListener(`realm://127.0.0.1:${rosController.httpPort}`,
             rosController.adminUser, notificationFilterPrefix + regex, worker);
+        console.log('expectNotifications added listener');
         const realm = await Realm.open({path: tmpIpcPath, schema: ipcSchema});
         const events = realm.objects('Event');
         let i = 0;
+        let listenerCount = 0;
         await fn(() => {
+            console.log('awaiting next()', Date.now());
             return new Promise((resolve, reject) => {
-                let timeout = setTimeout(() => reject('Wait for notification timed out'), 5000);
+                let timeout = setTimeout(() => reject(`Wait for notification timed out: ${Date.now()}`), 5000);
+                if (++listenerCount != 1)
+                    throw new Error('two listeners');
                 events.addListener(() => {
+                    console.log('events: ', i, events, Date.now());
                     if (events.length <= i) {
                         return;
                     }
 
+                    console.log('removeAllListeners');
                     clearTimeout(timeout);
+                    listenerCount = 0;
                     events.removeAllListeners();
 
+                    console.log('resolving: ', events[i], Date.now());
                     resolve(events[i]);
                     ++i;
                 });
@@ -820,7 +830,9 @@ describe('Multi-process Notifier', () => {
     // needed because events on multiple realms will arrive in nondeterministic order
     async function expectEvents(next, events) {
         while (Object.keys(events).length) {
+            console.log('awaiting next');
             const actual = await next();
+            console.log('got next', actual);
             const key = path.basename(actual.path);
             const expected = events[key];
             expect(expected).toBeDefined();
