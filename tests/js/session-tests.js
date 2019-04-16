@@ -85,13 +85,17 @@ function runOutOfProcess() {
     });
 }
 
-function waitForSessionConnected(session) {
-    return new Promise(res => {
-        session.addConnectionNotification((newState, oldState) => {
-            if (newState === Realm.Sync.ConnectionState.Connected) {
-                res();
+function waitForConnectionState(session, state) {
+    return new Promise((resolve, reject) => {
+        let callback = (newState) => {
+            if (newState === state) {
+                session.removeConnectionNotification(callback);
+                resolve();
             }
-        })
+        };
+        session.addConnectionNotification(callback);
+        callback(session.connectionState);
+        setTimeout(() => { reject('Connection state notification timed out') }, 10000);
     });
 }
 
@@ -1174,105 +1178,72 @@ module.exports = {
 
         const realm = await Realm.open(config);
         const session = realm.syncSession;
+        await waitForConnectionState(session, Realm.Sync.ConnectionState.Connected);
 
-        let started = false;
+        session.pause();
+        await waitForConnectionState(session, Realm.Sync.ConnectionState.Disconnected);
+
+        session.resume();
+        await waitForConnectionState(session, Realm.Sync.ConnectionState.Connected);
+    },
+
+    async testMultipleResumes() {
+        const user = await Realm.Sync.User.register('http://localhost:9080', uuid(), 'password')
+        const config = {
+            sync: {
+                user: user,
+                url: `realm://localhost:9080/~/${uuid()}`,
+                fullSynchronization: true,
+            }
+        };
+
+        const realm = await Realm.open(config);
+        const session = realm.syncSession;
+        await waitForConnectionState(session, Realm.Sync.ConnectionState.Connected);
+
+        session.resume();
+        session.resume();
+        session.resume();
         return new Promise((resolve, reject) => {
-            session.addConnectionNotification((newState, oldState) => {
-                if (newState === Realm.Sync.ConnectionState.Connected) {
-                    if (started) {
-                        resolve();
-                    }
-                    else {
-                        started = true;
-                        session.pause();
-                    }
+            setTimeout(() => {
+                if (session.isConnected()) {
+                    resolve();
+                } else {
+                    reject(`Session should have been connected but was '${session.connectionState}'.`);
                 }
-                if (newState === Realm.Sync.ConnectionState.Disconnected) {
-                    session.resume();
-                }
-            });
-
-            setTimeout(() => { reject('Connection state notification timed out') }, 10000);
+            }, 1000);
         });
     },
 
-    testMultipleResumes() {
-        if(!isNodeProccess) {
-            return;
-        }
+    async testMultiplePauses() {
+        const user = await Realm.Sync.User.register('http://localhost:9080', uuid(), 'password')
+        const config = {
+            sync: {
+                user: user,
+                url: `realm://localhost:9080/~/${uuid()}`,
+                fullSynchronization: true,
+            }
+        };
 
-        return Realm.Sync.User.register('http://localhost:9080', uuid(), 'password')
-        .then((user) => {
-            const config = {
-                sync: {
-                    user: user,
-                    url: `realm://localhost:9080/~/${uuid()}`,
-                    fullSynchronization: true,
+        const realm = await Realm.open(config);
+        const session = realm.syncSession;
+        await waitForConnectionState(session, Realm.Sync.ConnectionState.Connected);
+
+        session.pause();
+        session.pause();
+        session.pause();
+        return new Promise((resolve, reject) => {
+            setTimeout(() => {
+                if (!session.isConnected()) {
+                    resolve();
+                } else {
+                    reject(`Session should have been disconnected but was '${session.connectionState}'.`);
                 }
-            };
-
-            return Realm.open(config)
-        }).then(realm => {
-            return new Promise((resolve, reject) => {
-                const session = realm.syncSession;
-
-                waitForSessionConnected(session).then(() => {
-                    session.resume();
-                    session.resume();
-                    session.resume();
-                    setTimeout(() => {
-                        if (session.isConnected()) {
-                            resolve();
-                        } else {
-                            reject();
-                        }
-                    }, 1000);
-                })
-            })
-        })
-    },
-
-    testMultiplePauses() {
-        if(!isNodeProccess) {
-            return;
-        }
-
-        return Realm.Sync.User.register('http://localhost:9080', uuid(), 'password')
-        .then((user) => {
-            const config = {
-                sync: {
-                    user: user,
-                    url: `realm://localhost:9080/~/${uuid()}`,
-                    fullSynchronization: true,
-                }
-            };
-
-            return Realm.open(config)
-        }).then(realm => {
-            return new Promise((resolve, reject) => {
-                const session = realm.syncSession;
-
-                waitForSessionConnected(session).then(() => {
-                    session.pause();
-                    session.pause();
-                    session.pause();
-                    setTimeout(() => {
-                        if (session.isConnected()) {
-                            reject();
-                        } else {
-                            resolve();
-                        }
-                    }, 1000);
-                })
-            })
-        })
+            }, 1000);
+        });
     },
 
     testUploadDownloadAllChanges() {
-        if(!isNodeProccess) {
-            return;
-        }
-
         const AUTH_URL = 'http://localhost:9080';
         const REALM_URL = 'realm://localhost:9080/completion_realm';
         const schema = {
@@ -1322,10 +1293,6 @@ module.exports = {
     },
 
     testDownloadAllServerChangesTimeout() {
-        if(!isNodeProccess) {
-            return;
-        }
-
         const AUTH_URL = 'http://localhost:9080';
         const REALM_URL = 'realm://localhost:9080/timeout_download_realm';
         return new Promise((resolve, reject) => {
@@ -1348,10 +1315,6 @@ module.exports = {
     },
 
     testUploadAllLocalChangesTimeout() {
-        if(!isNodeProccess) {
-            return;
-        }
-
         const AUTH_URL = 'http://localhost:9080';
         const REALM_URL = 'realm://localhost:9080/timeout_upload_realm';
         return new Promise((resolve, reject) => {
@@ -1374,29 +1337,22 @@ module.exports = {
     },
 
     testReconnect() {
-        if(!isNodeProccess) {
-            return;
-        }
-
         const AUTH_URL = 'http://localhost:9080';
         const REALM_URL = 'realm://localhost:9080/~/reconnect';
-        return new Promise((resolve, reject) => {
-            Realm.Sync.User.login(AUTH_URL, Realm.Sync.Credentials.nickname("admin", true))
-                .then((admin1) => {
-                    const admin1Config = admin1.createConfiguration({
-                        sync: {
-                            url: REALM_URL,
-                            fullSynchronization: true
-                        }
-                    });
-                    let realm = new Realm(admin1Config);
-
-                    // No real way to check if this works automatically.
-                    // This is just a smoke test, making sure the method doesn't crash outright.
-                    Realm.Sync.reconnect();
-                    resolve();
+        return Realm.Sync.User.login(AUTH_URL, Realm.Sync.Credentials.nickname("admin", true))
+            .then((admin1) => {
+                const admin1Config = admin1.createConfiguration({
+                    sync: {
+                        url: REALM_URL,
+                        fullSynchronization: true
+                    }
                 });
-        });
+                let realm = new Realm(admin1Config);
+
+                // No real way to check if this works automatically.
+                // This is just a smoke test, making sure the method doesn't crash outright.
+                Realm.Sync.reconnect();
+            });
     },
 
     test_hasExistingSessions() {
@@ -1424,7 +1380,7 @@ module.exports = {
                     let intervalId;
                     let it = 50;
                     intervalId = setInterval(function() {
-                        if ((!Realm.Sync._hasExistingSessions())) {
+                        if (!Realm.Sync._hasExistingSessions()) {
                             clearInterval(intervalId);
                             resolve();
                         } else if (it < 0) {
@@ -1440,71 +1396,57 @@ module.exports = {
     },
 
     testSessionStopPolicy() {
-        if(!isNodeProccess) {
-            return;
-        }
-
         const AUTH_URL = 'http://localhost:9080';
         const REALM_URL = 'realm://localhost:9080/~/stop_policy';
-        return new Promise((resolve, reject) => {
-            Realm.Sync.User.login(AUTH_URL, Realm.Sync.Credentials.nickname("admin", true))
-                .then((admin1) => {
-                    // Check valid input
-                    const config1 = admin1.createConfiguration({
-                        sync: {
-                            url: REALM_URL,
-                            fullSynchronization: true,
-                            _sessionStopPolicy: 'after-upload'
-                        }
-                    });
-                    new Realm(config1).close();
-
-                    const config2 = config1;
-                    config2.sync._sessionStopPolicy = 'immediately';
-                    new Realm(config2).close();
-
-                    const config3 = config1;
-                    config3.sync._sessionStopPolicy = 'never';
-                    new Realm(config3).close();
-
-                    // Invalid input
-                    const config4 = config1;
-                    config4.sync._sessionStopPolicy = "foo";
-                    TestCase.assertThrows(() => new Realm(config4));
-                    resolve();
+        return Realm.Sync.User.login(AUTH_URL, Realm.Sync.Credentials.nickname("admin", true))
+            .then((admin1) => {
+                // Check valid input
+                const config1 = admin1.createConfiguration({
+                    sync: {
+                        url: REALM_URL,
+                        fullSynchronization: true,
+                        _sessionStopPolicy: 'after-upload'
+                    }
                 });
+                new Realm(config1).close();
+
+                const config2 = config1;
+                config2.sync._sessionStopPolicy = 'immediately';
+                new Realm(config2).close();
+
+                const config3 = config1;
+                config3.sync._sessionStopPolicy = 'never';
+                new Realm(config3).close();
+
+                // Invalid input
+                const config4 = config1;
+                config4.sync._sessionStopPolicy = "foo";
+                TestCase.assertThrows(() => new Realm(config4));
         });
     },
 
     testSessionStopPolicyImmediately() {
-        if(!isNodeProccess) {
-            return;
-        }
-
         const AUTH_URL = 'http://localhost:9080';
         const REALM_URL = 'realm://localhost:9080/~/stop_policy_immediately';
-        return new Promise((resolve, reject) => {
-            Realm.Sync.User.login(AUTH_URL, Realm.Sync.Credentials.nickname("admin", true))
-                .then((admin1) => {
-                    // Check valid input
-                    const config1 = admin1.createConfiguration({
-                        sync: {
-                            url: REALM_URL,
-                            fullSynchronization: true,
-                            _sessionStopPolicy: 'immediately'
-                        }
-                    });
-
-                    {
-                        TestCase.assertFalse(Realm.Sync._hasExistingSessions());
-                        const realm = new Realm(config1);
-                        const session = realm.syncSession;
-                        TestCase.assertTrue(Realm.Sync._hasExistingSessions());
-                        realm.close();
+        return Realm.Sync.User.login(AUTH_URL, Realm.Sync.Credentials.nickname("admin", true))
+            .then((admin1) => {
+                // Check valid input
+                const config1 = admin1.createConfiguration({
+                    sync: {
+                        url: REALM_URL,
+                        fullSynchronization: true,
+                        _sessionStopPolicy: 'immediately'
                     }
-                    TestCase.assertFalse(Realm.Sync._hasExistingSessions());
-                    resolve();
                 });
-        });
+
+                {
+                    TestCase.assertFalse(Realm.Sync._hasExistingSessions());
+                    const realm = new Realm(config1);
+                    const session = realm.syncSession;
+                    TestCase.assertTrue(Realm.Sync._hasExistingSessions());
+                    realm.close();
+                }
+                TestCase.assertFalse(Realm.Sync._hasExistingSessions());
+            });
     }
 };
