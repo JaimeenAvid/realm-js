@@ -564,18 +564,18 @@ module.exports = {
         });
     },
 
-    testNotification: function() {
+    async testNotification() {
         const realm = new Realm({schema: [schemas.StringOnly]});
 
         let obj;
-        realm.write(function() {
+        realm.write(() => {
             obj = realm.create(schemas.StringOnly.name, { stringCol: 'foo' });
         });
 
         let calls = 0;
-        let resolve = () => {};
+        let resolve;
 
-        obj.addListener(function(obj, changes) {
+        obj.addListener((obj, changes) => {
             calls++;
             switch (calls) {
                 case 1:
@@ -590,19 +590,20 @@ module.exports = {
                     TestCase.assertTrue(changes.deleted);
                     TestCase.assertEqual(changes.changedProperties.length, 0);
                     realm.close();
-                    resolve();
             }
+            resolve();
         });
+        await new Promise(r => resolve = r);
 
-        return new Promise((r, _reject) => {
-            resolve = r;
-            realm.write(function() {
-                obj['stringCol'] = 'bar';
-            });
-            realm.write(function() {
-                realm.delete(obj);
-            });
+        realm.write(() => {
+            obj['stringCol'] = 'bar';
         });
+        await new Promise(r => resolve = r);
+
+        realm.write(() => {
+            realm.delete(obj);
+        });
+        await new Promise(r => resolve = r);
     },
 
     testAddAndRemoveListener: function() {
