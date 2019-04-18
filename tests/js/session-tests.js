@@ -1104,6 +1104,7 @@ module.exports = {
             };
             return Realm.open(config);
         }).then(realm => {
+            session.pause();
             return new Promise((resolve, reject) => {
                 let session = realm.syncSession;
                 TestCase.assertEqual(session.connectionState, Realm.Sync.ConnectionState.Disconnected);
@@ -1130,6 +1131,7 @@ module.exports = {
                         resolve();
                     }
                 });
+                session.resume();
                 setTimeout(() => { reject() }, 10000);
             });
         });
